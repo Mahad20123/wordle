@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wordle</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #000000;
+      --panel: #0b0e14;
+      --tile-border: #232c40;
+      --text: #eaf2ff;
+      --muted: #64748b;
+      --correct: #22c55e;
+      --present: #ef4444;
+      --absent-bg: #14171f;
+      --key: #12151c;
+      --accent: #3b82f6;
+      --accent-soft: rgba(59, 130, 246, 0.16);
+      --accent-border: rgba(96, 165, 250, 0.55);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { background: var(--bg); overflow-x: clip; }
+
+    body {
+      min-height: 100vh;
+      overflow-x: clip;
+      background:
+        radial-gradient(900px 480px at 50% -120px, rgba(59, 130, 246, 0.16), transparent 62%),
+        radial-gradient(700px 420px at 50% 115%, rgba(37, 99, 235, 0.08), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      font-family: "Outfit", system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 12px 44px;
+    }
+
+    ::selection { background: var(--accent); color: #fff; }
+
+    /* ---------- Header ---------- */
+
+    .topbar {
+      width: 100%;
+      max-width: 480px;
+      text-align: center;
+      padding-bottom: 14px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(96, 165, 250, 0.14);
+    }
+
+    .topbar h1 {
+      font-size: clamp(2rem, 6vw, 2.7rem);
+      font-weight: 800;
+      letter-spacing: 0.42em;
+      text-indent: 0.42em;
+      background: linear-gradient(180deg, #dbeafe 0%, #93c5fd 45%, #3b82f6 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+      filter: drop-shadow(0 0 22px rgba(59, 130, 246, 0.35));
+    }
+
+    .subtitle {
+      margin-top: 6px;
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.34em;
+      text-indent: 0.34em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ---------- Board ---------- */
+
+    .board { display: grid; grid-template-rows: repeat(6, 1fr); gap: 5px; }
+
+    .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+
+    .tile {
+      width: min(15vw, 62px);
+      height: min(15vw, 62px);
+      border: 1.5px solid var(--tile-border);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(1.3rem, 5vw, 2rem);
+      font-weight: 700;
+      text-transform: uppercase;
+      background: linear-gradient(180deg, #10141d 0%, #0a0d13 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .tile.filled {
+      border-color: var(--accent-border);
+      box-shadow: 0 0 14px rgba(59, 130, 246, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .tile.pop { animation: pop 0.12s ease; }
+
+    @keyframes pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    .tile.correct {
+      background: linear-gradient(180deg, #2fd36b 0%, #159443 100%);
+      border-color: #34d399;
+      color: #04140a;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+      box-shadow: 0 0 18px rgba(34, 197, 94, 0.35);
+    }
+
+    .tile.present {
+      background: linear-gradient(180deg, #f4655f 0%, #c02626 100%);
+      border-color: #f87171;
+      color: #1a0505;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.32);
+    }
+
+    .tile.absent {
+      background: var(--absent-bg);
+      border-color: var(--tile-border);
+      color: #5b6472;
+      box-shadow: none;
+    }
+
+    .tile.reveal { animation: reveal 0.5s ease; }
+
+    @keyframes reveal {
+      0% { transform: rotateX(0deg); }
+      50% { transform: rotateX(90deg); }
+      100% { transform: rotateX(0deg); }
+    }
+
+    /* ---------- Message ---------- */
+
+    .message {
+      min-height: 1.5em;
+      margin: 16px 0 6px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .message.win { color: #4ade80; text-shadow: 0 0 16px rgba(74, 222, 128, 0.35); }
+    .message.lose { color: #f87171; }
+
+    /* ---------- Keyboard ---------- */
+
+    .keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-top: 10px;
+      user-select: none;
+    }
+
+    .key-row { display: flex; justify-content: center; gap: 6px; }
+
+    .key {
+      min-width: min(9.6vw, 50px);
+      height: min(13.5vw, 58px);
+      padding: 0 7px;
+      border: 1px solid #232937;
+      border-radius: 11px;
+      background: linear-gradient(180deg, #171b24 0%, #0d1017 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 6px rgba(0, 0, 0, 0.55);
+      color: var(--text);
+      font-family: inherit;
+      font-weight: 600;
+      font-size: clamp(0.85rem, 3.4vw, 1.05rem);
+      cursor: pointer;
+      transition: transform 0.08s ease, border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+    }
+
+    .key:hover {
+      border-color: var(--accent-border);
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transform: translateY(-1px);
+    }
+
+    .key:active { transform: translateY(1px) scale(0.97); filter: brightness(0.9); }
+
+    .key:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .key.wide {
+      min-width: min(20vw, 92px);
+      font-size: clamp(0.68rem, 2.7vw, 0.82rem);
+      letter-spacing: 0.08em;
+    }
+
+    .key.correct {
+      background: linear-gradient(180deg, #2fd36b 0%, #159443 100%);
+      border-color: #34d399;
+      color: #04140a;
+      box-shadow: 0 0 14px rgba(34, 197, 94, 0.3);
+    }
+
+    .key.present {
+      background: linear-gradient(180deg, #f4655f 0%, #c02626 100%);
+      border-color: #f87171;
+      color: #1a0505;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.28);
+    }
+
+    .key.absent {
+      background: var(--absent-bg);
+      border-color: var(--tile-border);
+      color: #5b6472;
+      box-shadow: none;
+    }
+
+    /* ---------- Button & stats ---------- */
+
+    .actions { margin-top: 20px; text-align: center; }
+
+    .btn {
+      padding: 12px 28px;
+      border: 1px solid rgba(147, 197, 253, 0.4);
+      border-radius: 999px;
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      box-shadow: 0 8px 26px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      color: #fff;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.12);
+      box-shadow: 0 10px 32px rgba(37, 99, 235, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    .btn:focus-visible { outline: 2px solid #93c5fd; outline-offset: 3px; }
+
+    .stats {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      text-align: center;
+    }
+
+    /* ---------- Footer ---------- */
+
+    .footer {
+      margin-top: 28px;
+      max-width: 470px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.6;
+    }
+
+    .swatch { font-weight: 700; }
+    .swatch.correct { color: #4ade80; }
+    .swatch.present { color: #f87171; }
+    .swatch.absent { color: #94a3b8; }
+
+    /* ---------- Buddy (blue avatar) ---------- */
+
+    .buddy {
+      position: fixed;
+      right: -46px;
+      top: 30%;
+      width: 108px;
+      height: 108px;
+      z-index: 4;
+      pointer-events: none;
+      transition: transform 0.65s cubic-bezier(0.34, 1.4, 0.64, 1), right 0.65s cubic-bezier(0.34, 1.4, 0.64, 1);
+      will-change: transform, right;
+    }
+
+    .buddy svg { width: 100%; height: 100%; overflow: visible; animation: bob 3.4s ease-in-out infinite; }
+
+    @keyframes bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+
+    .buddy.mood-sad {
+      transform: translateX(8px) translateY(14px) scale(0.94);
+    }
+
+    .buddy.mood-sad svg { animation: slump 3.4s ease-in-out infinite; }
+
+    @keyframes slump {
+      0%, 100% { transform: translateY(3px) rotate(-4deg); }
+      50% { transform: translateY(6px) rotate(-5deg); }
+    }
+
+    .buddy.mood-happy {
+      right: calc(50% - 54px);
+      top: 24%;
+      transform: translateY(-10px) scale(1.38);
+      z-index: 6;
+      filter: drop-shadow(0 0 26px rgba(59, 130, 246, 0.55));
+    }
+
+    .buddy.mood-happy svg { animation: hop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }
+
+    @keyframes hop {
+      0%, 100% { transform: translateY(0) scale(1); }
+      40% { transform: translateY(-14px) scale(1.04); }
+      70% { transform: translateY(0) scale(0.97); }
+    }
+
+    .eye-normal, .eye-sad, .eye-happy,
+    .mouth-smile, .mouth-frown, .mouth-open,
+    .brow, .blush, .sparkle { opacity: 0; transition: opacity 0.25s ease; }
+
+    .mood-idle .eye-normal, .mood-idle .mouth-smile { opacity: 1; }
+    .mood-sad .eye-sad, .mood-sad .mouth-frown, .mood-sad .brow { opacity: 1; }
+    .mood-happy .eye-happy, .mood-happy .mouth-open, .mood-happy .blush, .mood-happy .sparkle { opacity: 1; }
+
+    .mood-happy .sparkle { animation: twinkle 0.9s ease-in-out infinite; }
+    .mood-happy .sparkle.s2 { animation-delay: 0.3s; }
+    .mood-happy .sparkle.s3 { animation-delay: 0.6s; }
+
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.15; transform: scale(0.7); }
+      50% { opacity: 1; transform: scale(1.15); }
+    }
+
+    .pupil { transform-box: fill-box; transform-origin: center; animation: blink 4.6s infinite; }
+
+    @keyframes blink {
+      0%, 91%, 100% { transform: scaleY(1); }
+      94% { transform: scaleY(0.08); }
+      97% { transform: scaleY(1); }
+    }
+
+    @media (max-width: 560px) {
+      .buddy { width: 86px; height: 86px; right: -36px; top: 28%; }
+      .buddy.mood-happy { right: calc(50% - 43px); top: 20%; }
+    }
+
+    /* ---------- Toast ---------- */
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 30px;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(10, 14, 22, 0.92);
+      border: 1px solid var(--accent-border);
+      box-shadow: 0 0 24px rgba(59, 130, 246, 0.25), 0 8px 24px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: var(--text);
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      padding: 11px 20px;
+      border-radius: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 10;
+    }
+
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>WORDLE</h1>
+    <p class="subtitle">5 letters · 6 tries</p>
+  </header>
+
+  <main>
+    <div id="board" class="board" aria-label="Wordle board"></div>
+
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+
+    <div id="keyboard" class="keyboard" aria-label="On-screen keyboard"></div>
+
+    <div class="actions">
+      <button id="new-game" class="btn" type="button">New Word</button>
+    </div>
+
+    <p class="stats" id="stats"></p>
+  </main>
+
+  <footer class="footer">
+    <p>Guess the 5-letter word in 6 tries. Tiles turn <span class="swatch correct">green</span> for a correct spot, <span class="swatch present">red</span> for a wrong spot, and stay <span class="swatch absent">gray</span> otherwise. A fresh word every playthrough!</p>
+  </footer>
+
+  <div id="buddy" class="buddy mood-idle" aria-hidden="true">
+    <svg viewBox="0 0 120 120">
+      <defs>
+        <linearGradient id="buddyBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#7dd3fc" />
+          <stop offset="0.45" stop-color="#38bdf8" />
+          <stop offset="1" stop-color="#2563eb" />
+        </linearGradient>
+      </defs>
+
+      <!-- antenna -->
+      <line x1="62" y1="30" x2="62" y2="16" stroke="#3b82f6" stroke-width="3.5" stroke-linecap="round" />
+      <circle cx="62" cy="12" r="5" fill="#93c5fd">
+        <animate attributeName="opacity" values="1;0.55;1" dur="2.2s" repeatCount="indefinite" />
+      </circle>
+
+      <!-- body -->
+      <ellipse cx="62" cy="72" rx="44" ry="40" fill="url(#buddyBody)" stroke="#1e40af" stroke-width="2.5" />
+      <ellipse cx="62" cy="92" rx="27" ry="13" fill="#bae6fd" opacity="0.3" />
+
+      <!-- feet -->
+      <ellipse cx="44" cy="110" rx="10" ry="5" fill="#1d4ed8" />
+      <ellipse cx="80" cy="110" rx="10" ry="5" fill="#1d4ed8" />
+
+      <!-- normal eyes (idle): big white cartoon eyes -->
+      <g class="eye-normal">
+        <circle cx="46" cy="61" r="16" fill="#fff" />
+        <circle cx="79" cy="61" r="16" fill="#fff" />
+        <circle class="pupil" cx="48" cy="63" r="6.5" fill="#0b1020" />
+        <circle class="pupil" cx="81" cy="63" r="6.5" fill="#0b1020" />
+        <circle cx="50.5" cy="60.5" r="2.3" fill="#fff" />
+        <circle cx="83.5" cy="60.5" r="2.3" fill="#fff" />
+      </g>
+
+      <!-- sad eyes: big whites, drooping pupils -->
+      <g class="eye-sad">
+        <circle cx="46" cy="63" r="16" fill="#fff" />
+        <circle cx="79" cy="63" r="16" fill="#fff" />
+        <circle cx="46" cy="68" r="6.5" fill="#0b1020" />
+        <circle cx="79" cy="68" r="6.5" fill="#0b1020" />
+        <circle cx="48" cy="66" r="1.8" fill="#fff" opacity="0.9" />
+        <circle cx="81" cy="66" r="1.8" fill="#fff" opacity="0.9" />
+        <path d="M32 56 q14 -8 28 -1" fill="none" stroke="#1e40af" stroke-width="3" stroke-linecap="round" />
+        <path d="M92 56 q-14 -8 -28 -1" fill="none" stroke="#1e40af" stroke-width="3" stroke-linecap="round" />
+      </g>
+      <g class="brow">
+        <path d="M34 47 q12 -6 24 0" fill="none" stroke="#1e40af" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+        <path d="M90 47 q-12 -6 -24 0" fill="none" stroke="#1e40af" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+      </g>
+
+      <!-- happy eyes (^ ^) -->
+      <g class="eye-happy">
+        <path d="M32 64 q14 -16 28 0" fill="none" stroke="#0b1020" stroke-width="5" stroke-linecap="round" />
+        <path d="M64 64 q14 -16 28 0" fill="none" stroke="#0b1020" stroke-width="5" stroke-linecap="round" />
+      </g>
+
+      <!-- mouths -->
+      <path class="mouth-smile" d="M50 88 q12 9 24 0" fill="none" stroke="#0b1020" stroke-width="3.5" stroke-linecap="round" />
+      <path class="mouth-frown" d="M50 94 q12 -8 24 0" fill="none" stroke="#0b1020" stroke-width="3.5" stroke-linecap="round" />
+      <path class="mouth-open" d="M49 85 q13 17 26 0 z" fill="#0b1020" />
+
+      <!-- blush + sparkles (happy) -->
+      <g class="blush">
+        <ellipse cx="31" cy="80" rx="6.5" ry="4" fill="#fca5f1" opacity="0.8" />
+        <ellipse cx="93" cy="80" rx="6.5" ry="4" fill="#fca5f1" opacity="0.8" />
+      </g>
+      <g class="sparkle s1">
+        <path d="M12 42 l2.2 5 5 2.2 -5 2.2 -2.2 5 -2.2 -5 -5 -2.2 5 -2.2 z" fill="#bfdbfe" />
+      </g>
+      <g class="sparkle s2">
+        <path d="M110 30 l2 4.5 4.5 2 -4.5 2 -2 4.5 -2 -4.5 -4.5 -2 4.5 -2 z" fill="#bfdbfe" />
+      </g>
+      <g class="sparkle s3">
+        <path d="M104 66 l1.6 3.6 3.6 1.6 -3.6 1.6 -1.6 3.6 -1.6 -3.6 -3.6 -1.6 3.6 -1.6 z" fill="#93c5fd" />
+      </g>
+    </svg>
+  </div>
+
+  <div id="toast" class="toast" role="alert"></div>
+
+  <script>
+    /* Wordle — 5 letters x 6 tries. Green = right letter & spot, red = wrong spot, gray = not in word. */
+
+    "use strict";
+
+    const WORDS = [
+      "AMBER", "APPLE", "BEACH", "BLOOM", "BRAVE", "BREAD", "BRICK", "CANDY",
+      "CARGO", "CHAIR", "CHESS", "CLOUD", "CORAL", "CRANE", "CRISP", "CROWN",
+      "DANCE", "DELTA", "DONUT", "DREAM", "EAGLE", "EARTH", "EMBER", "FIBER",
+      "FLAME", "FLASH", "FROST", "FUDGE", "GHOST", "GLASS", "GLIDE", "GLOBE",
+      "GRAIN", "GRAPE", "HAZEL", "HEART", "HONEY", "HOUSE", "IGLOO", "JUICE",
+      "LEMON", "LIGHT", "LUNAR", "MAGIC", "MANGO", "MAPLE", "MEDAL", "MONEY",
+      "MOUSE", "NIGHT", "NINJA", "OCEAN", "OLIVE", "PANDA", "PEARL", "PIANO",
+      "PILOT", "PIXEL", "PIZZA", "PLANT", "PRISM", "QUEEN", "QUAIL",
+      "QUIRK", "RADIO", "RAVEN", "RIVER", "ROBOT", "SHARK", "SHEEP", "SIREN",
+      "SMILE", "SNAKE", "SOLAR", "SPACE", "SPICE", "STORM", "SUGAR", "SWIRL",
+      "TEMPO", "TIGER", "TRAIN", "VAULT", "VIVID", "WAGON", "WATER", "WHALE",
+      "WHEEL", "WORLD", "YACHT", "ZEBRA", "ZESTY"
+    ];
+
+    const WORD_LENGTH = 5;
+    const MAX_ROWS = 6;
+
+    const ROWS = [
+      [..."QWERTYUIOP"],
+      [..."ASDFGHJKL"],
+      ["ENTER", ..."ZXCVBNM", "⌫"],
+    ];
+
+    const boardEl = document.getElementById("board");
+    const keyboardEl = document.getElementById("keyboard");
+    const messageEl = document.getElementById("message");
+    const toastEl = document.getElementById("toast");
+    const statsEl = document.getElementById("stats");
+    const newGameBtn = document.getElementById("new-game");
+    const buddyEl = document.getElementById("buddy");
+
+    let secret = "";
+    let row = 0;
+    let col = 0;
+    let grid = Array.from({ length: MAX_ROWS }, () => []);
+    let gameOver = false;
+    let revealing = false;
+    const keyState = {}; // letter -> "correct" | "present" | "absent"
+
+    /* ---------- Board ---------- */
+
+    function buildBoard() {
+      boardEl.innerHTML = "";
+      for (let r = 0; r < MAX_ROWS; r++) {
+        const rowEl = document.createElement("div");
+        rowEl.className = "row";
+        for (let c = 0; c < WORD_LENGTH; c++) {
+          const tile = document.createElement("div");
+          tile.className = "tile";
+          rowEl.appendChild(tile);
+        }
+        boardEl.appendChild(rowEl);
+      }
+    }
+
+    function tileAt(r, c) {
+      return boardEl.children[r].children[c];
+    }
+
+    /* ---------- Keyboard ---------- */
+
+    function buildKeyboard() {
+      keyboardEl.innerHTML = "";
+      for (const rowStr of ROWS) {
+        const rowEl = document.createElement("div");
+        rowEl.className = "key-row";
+        for (const ch of rowStr) {
+          const key = document.createElement("button");
+          key.type = "button";
+          key.className = "key";
+          key.dataset.key = ch;
+          key.textContent = ch;
+          if (ch === "ENTER" || ch === "⌫") key.classList.add("wide");
+          rowEl.appendChild(key);
+        }
+        keyboardEl.appendChild(rowEl);
+      }
+    }
+
+    function updateKeyColors() {
+      for (const key of keyboardEl.querySelectorAll("[data-key]")) {
+        const state = keyState[key.dataset.key];
+        key.classList.remove("correct", "present", "absent");
+        if (state) key.classList.add(state);
+      }
+    }
+
+    /* ---------- Game flow ---------- */
+
+    function onKey(key) {
+      if (gameOver || revealing) return;
+
+      if (key === "ENTER") {
+        submitGuess();
+      } else if (key === "⌫" || key === "BACKSPACE") {
+        if (col > 0) {
+          col--;
+          grid[row][col] = undefined;
+          const tile = tileAt(row, col);
+          tile.textContent = "";
+          tile.classList.remove("filled");
+        }
+    } else if (/^[A-Z]$/.test(key)) {
+      if (col < WORD_LENGTH) {
+        // Start typing the next guess and the buddy cheers back up.
+        if (col === 0 && buddyEl.classList.contains("mood-sad")) setBuddyMood("idle");
+        grid[row][col] = key;
+          const tile = tileAt(row, col);
+          tile.textContent = key;
+          tile.classList.add("filled", "pop");
+          setTimeout(() => tile.classList.remove("pop"), 130);
+          col++;
+          saveState();
+        }
+      }
+    }
+
+    function submitGuess() {
+      const guess = grid[row].join("");
+      if (guess.length < WORD_LENGTH) {
+        toast("Not enough letters");
+        return;
+      }
+
+      revealing = true;
+
+      // Two-pass coloring handles duplicate letters correctly:
+      // 1) mark exact-position matches, 2) hand out "present" for leftover letters.
+      const result = Array(WORD_LENGTH).fill("absent");
+      const remaining = {};
+      for (const ch of secret) remaining[ch] = (remaining[ch] || 0) + 1;
+      for (let i = 0; i < WORD_LENGTH; i++) {
+        if (guess[i] === secret[i]) {
+          result[i] = "correct";
+          remaining[guess[i]]--;
+        }
+      }
+      for (let i = 0; i < WORD_LENGTH; i++) {
+        if (result[i] === "correct") continue;
+        if (remaining[guess[i]] > 0) {
+          result[i] = "present";
+          remaining[guess[i]]--;
+        }
+      }
+
+      // Reveal tiles one by one with a flip.
+      for (let i = 0; i < WORD_LENGTH; i++) {
+        const tile = tileAt(row, i);
+        setTimeout(() => {
+          tile.classList.add("reveal");
+          tile.classList.add(result[i]);
+        }, i * 250);
+      }
+
+      const revealDone = WORD_LENGTH * 250 + 300;
+
+      setTimeout(() => {
+        for (let i = 0; i < WORD_LENGTH; i++) {
+          const state = result[i];
+          const prev = keyState[guess[i]];
+          if (state === "correct") keyState[guess[i]] = "correct";
+          else if (state === "present" && prev !== "correct") keyState[guess[i]] = "present";
+          else if (!prev) keyState[guess[i]] = "absent";
+        }
+        updateKeyColors();
+
+        if (guess === secret) {
+          messageEl.textContent = "Brilliant! You got it! 🎉";
+          messageEl.className = "message win";
+          gameOver = true;
+          setBuddyMood("happy");
+          recordResult(true);
+        } else {
+          row++;
+          col = 0;
+          revealing = false;
+          saveState();
+          if (row >= MAX_ROWS) {
+            messageEl.textContent = "Out of tries! The word was " + secret + ".";
+            messageEl.className = "message lose";
+            gameOver = true;
+            setBuddyMood("sad");
+            recordResult(false);
+          } else {
+            setBuddyMood("sad", 1800);
+          }
+        }
+      }, revealDone);
+    }
+
+    function newGame() {
+      let next;
+      do {
+        next = WORDS[Math.floor(Math.random() * WORDS.length)];
+      } while (next === secret && WORDS.length > 1);
+      secret = next;
+      row = 0;
+      col = 0;
+      grid = Array.from({ length: MAX_ROWS }, () => []);
+      gameOver = false;
+      revealing = false;
+      for (const k of Object.keys(keyState)) delete keyState[k];
+
+      buildBoard();
+      updateKeyColors();
+      messageEl.textContent = "";
+      messageEl.className = "message";
+      setBuddyMood("idle");
+      saveState();
+    }
+
+    /* ---------- Persistence ---------- */
+
+    function saveState() {
+      const state = { secret, row, col, grid, gameOver };
+      localStorage.setItem("wordle-state", JSON.stringify(state));
+    }
+
+    function colorizeRow(r) {
+      const guess = grid[r].join("");
+      const remaining = {};
+      for (const ch of secret) remaining[ch] = (remaining[ch] || 0) + 1;
+      for (let i = 0; i < WORD_LENGTH; i++) {
+        if (guess[i] === secret[i]) {
+          tileAt(r, i).classList.add("correct");
+          remaining[guess[i]]--;
+        }
+      }
+      for (let i = 0; i < WORD_LENGTH; i++) {
+        if (guess[i] === secret[i]) continue;
+        if (remaining[guess[i]] > 0) {
+          tileAt(r, i).classList.add("present");
+          remaining[guess[i]]--;
+        } else {
+          tileAt(r, i).classList.add("absent");
+        }
+      }
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem("wordle-state");
+        if (!raw) return false;
+        const state = JSON.parse(raw);
+        // Old saves (6-letter words) are rejected here and a fresh game starts.
+        if (!WORDS.includes(state.secret)) return false;
+        if (!Array.isArray(state.grid) || state.grid.length !== MAX_ROWS) return false;
+
+        secret = state.secret;
+        row = state.row;
+        col = state.col;
+        grid = state.grid;
+        gameOver = state.gameOver;
+
+        // Restore finished rows.
+        for (let r = 0; r < row; r++) {
+          const guess = grid[r].join("");
+          colorizeRow(r);
+          for (let i = 0; i < WORD_LENGTH; i++) {
+            tileAt(r, i).textContent = guess[i];
+            const tile = tileAt(r, i);
+            const ch = guess[i];
+            const cls = tile.classList.contains("correct") ? "correct"
+              : tile.classList.contains("present") ? "present" : "absent";
+            if (cls === "correct") keyState[ch] = "correct";
+            else if (cls === "present" && keyState[ch] !== "correct") keyState[ch] = "present";
+            else if (!keyState[ch]) keyState[ch] = "absent";
+          }
+        }
+        updateKeyColors();
+
+        // Restore current (unfinished) row letters.
+        for (let c = 0; c < col; c++) {
+          const tile = tileAt(row, c);
+          tile.textContent = grid[row][c];
+          tile.classList.add("filled");
+        }
+
+        if (gameOver) {
+          revealing = false;
+          const won = row > 0 && grid[row - 1].join("") === secret;
+          messageEl.textContent = won ? "Brilliant! You got it! 🎉" : "Out of tries! The word was " + secret + ".";
+          messageEl.className = won ? "message win" : "message lose";
+          setBuddyMood(won ? "happy" : "sad");
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function recordResult(won) {
+      const stats = JSON.parse(localStorage.getItem("wordle-stats") || '{"played":0,"wins":0}');
+      stats.played++;
+      if (won) stats.wins++;
+      localStorage.setItem("wordle-stats", JSON.stringify(stats));
+      renderStats();
+      saveState();
+    }
+
+    function renderStats() {
+      const stats = JSON.parse(localStorage.getItem("wordle-stats") || '{"played":0,"wins":0}');
+      const pct = stats.played ? Math.round((stats.wins / stats.played) * 100) : 0;
+      statsEl.textContent = "Played " + stats.played + " · Won " + stats.wins + " (" + pct + "%)";
+    }
+
+    /* ---------- UI helpers ---------- */
+
+    let toastTimer;
+    function toast(text) {
+      toastEl.textContent = text;
+      toastEl.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1600);
+    }
+
+    /* ---------- Buddy moods ---------- */
+
+    let buddyTimer;
+    function setBuddyMood(mood, revertAfterMs) {
+      clearTimeout(buddyTimer);
+      buddyEl.classList.remove("mood-idle", "mood-sad", "mood-happy");
+      buddyEl.classList.add("mood-" + mood);
+      if (revertAfterMs) {
+        buddyTimer = setTimeout(() => setBuddyMood("idle"), revertAfterMs);
+      }
+    }
+
+    /* ---------- Events ---------- */
+
+    keyboardEl.addEventListener("click", (e) => {
+      const key = e.target.closest("[data-key]");
+      if (key) onKey(key.dataset.key);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = e.key === "Backspace" ? "⌫" : e.key === "Enter" ? "ENTER" : e.key.toUpperCase();
+      onKey(key);
+    });
+
+    newGameBtn.addEventListener("click", () => {
+      newGame();
+      toast("New word chosen — good luck!");
+    });
+
+    /* ---------- Init ---------- */
+
+    buildBoard();
+    buildKeyboard();
+    if (!loadState()) newGame();
+    renderStats();
+  </script>
+</body>
+</html>
